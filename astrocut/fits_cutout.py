@@ -64,7 +64,7 @@ class FITSCutout(ImageCutout):
                  cutout_size: Union[int, np.ndarray, Quantity, List[int], Tuple[int]] = 25,
                  fill_value: Union[int, float] = np.nan, limit_rounding_method: str = 'round',
                  extension: Optional[Union[int, List[int], Literal['all']]] = None, 
-                 single_outfile: bool = True, verbose: bool = False):
+                 single_outfile: bool = True, verbose: bool = False,keep_primary: bool = True):
         # Superclass constructor 
         super().__init__(input_files, coordinates, cutout_size, fill_value, limit_rounding_method, verbose)
                
@@ -76,6 +76,7 @@ class FITSCutout(ImageCutout):
         # Assigning other attributes
         self._single_outfile = single_outfile
         self._fits_cutouts = None
+        self._keep_primary = keep_primary
         self.hdu_cutouts_by_file = {}
 
         # Make the cutouts upon initialization
@@ -103,9 +104,12 @@ class FITSCutout(ImageCutout):
 
         # Build the primary HDU with keywords
         primary_hdu = fits.PrimaryHDU()
-        primary_hdu.header.extend([('ORIGIN', 'STScI/MAST', 'institution responsible for creating this file'),
-                                   ('DATE', str(date.today()), 'file creation date'),
-                                   ('PROCVER', __version__, 'software version')])
+        if self._keep_primary:
+            primary_hdu.header = self._orig_primary
+        else:    
+            primary_hdu.header.extend([('ORIGIN', 'STScI/MAST', 'institution responsible for creating this file'),
+                                       ('DATE', str(date.today()), 'file creation date'),
+                                       ('PROCVER', __version__, 'software version')])
         for kwd in keywords:
             primary_hdu.header[kwd] = keywords[kwd]
 
@@ -183,6 +187,7 @@ class FITSCutout(ImageCutout):
 
         # Open the file
         hdulist = fits.open(input_file, mode='denywrite', memmap=True, fsspec_kwargs=fsspec_kwargs)
+        self._orig_primary = hdulist[0]
 
         # Sorting out which extension(s) to cutout
         infile_exts = np.where([hdu.is_image and hdu.size > 0 for hdu in hdulist])[0]
