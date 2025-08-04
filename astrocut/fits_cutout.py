@@ -285,9 +285,9 @@ class FITSCutout(ImageCutout):
         cutout_hdu = fits.ImageHDU(header=hdu_header, data=cutout_data)
 
         # Adding a few more keywords
-        cutout_hdu.header['ORIG_EXT'] = (ind, 'Extension in original file.')
-        if not cutout_hdu.header.get('ORIG_FLE') and primary_filename:
-            cutout_hdu.header['ORIG_FLE'] = primary_filename
+        #cutout_hdu.header['ORIG_EXT'] = (ind, 'Extension in original file.')
+        #if not cutout_hdu.header.get('ORIG_FLE') and primary_filename:
+        #    cutout_hdu.header['ORIG_FLE'] = primary_filename
 
         return cutout_hdu
 
