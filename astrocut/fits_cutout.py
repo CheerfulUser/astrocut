@@ -187,7 +187,7 @@ class FITSCutout(ImageCutout):
 
         # Open the file
         hdulist = fits.open(input_file, mode='denywrite', memmap=True, fsspec_kwargs=fsspec_kwargs)
-        self._orig_primary = hdulist[0]
+        self._orig_primary = hdulist[0].header
 
         # Sorting out which extension(s) to cutout
         infile_exts = np.where([hdu.is_image and hdu.size > 0 for hdu in hdulist])[0]
@@ -285,9 +285,9 @@ class FITSCutout(ImageCutout):
         cutout_hdu = fits.ImageHDU(header=hdu_header, data=cutout_data)
 
         # Adding a few more keywords
-        #cutout_hdu.header['ORIG_EXT'] = (ind, 'Extension in original file.')
-        #if not cutout_hdu.header.get('ORIG_FLE') and primary_filename:
-        #    cutout_hdu.header['ORIG_FLE'] = primary_filename
+        cutout_hdu.header['ORIG_EXT'] = (ind, 'Extension in original file.')
+        if not cutout_hdu.header.get('ORIG_FLE') and primary_filename:
+            cutout_hdu.header['ORIG_FLE'] = primary_filename
 
         return cutout_hdu
 
