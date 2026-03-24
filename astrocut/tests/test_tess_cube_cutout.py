@@ -53,6 +53,12 @@ def cutout_lims(img_size, cutout_size):
 
 
 @pytest.fixture
+def xy_pos(img_size):
+    """Fixture to return the pixel position (x, y) at the center of the images (numpy 0-indexed)"""
+    return (img_size // 2, img_size // 2)
+
+
+@pytest.fixture
 def ffi_files(tmpdir, img_size, num_images, ffi_type: Literal["SPOC", "TICA"]):
     """Fixture for creating test ffi files"""
     return create_test_ffis(img_size, num_images, dir_name=tmpdir, product=ffi_type)
@@ -400,3 +406,102 @@ def test_tess_cube_cutout_invalid_product(cube_file):
     # Error if an invalid product name is input
     with pytest.raises(InvalidInputError, match='Product for TESS cube cutouts must be'):
         TessCubeCutout(cube_file, SkyCoord(0, 0, unit='deg'), 3, product='INVALID')
+
+
+@pytest.mark.parametrize("ffi_type", ["SPOC", "TICA"])
+def test_tess_cube_cutout_xy_pos(cube_file, num_images, ffi_type, cutout_size, xy_pos, cutout_lims):
+    # Make cutout using pixel position instead of sky coordinates
+    cutouts = TessCubeCutout(cube_file, cutout_size=cutout_size, xy_pos=xy_pos, product=ffi_type).cutouts
+    cutout = cutouts[0]
+
+    # Should return a list of CubeCutoutInstance objects
+    assert isinstance(cutouts, list)
+    assert isinstance(cutout, CubeCutout.CubeCutoutInstance)
+
+    # Check cutout shape and limits match the coordinate-based cutout
+    assert cutout.shape == (num_images, cutout_size, cutout_size)
+    assert np.all(cutout.cutout_lims == cutout_lims)
+    assert np.all(cutout.aperture == 1)
+
+    # Compare data with input cube file
+    with fits.open(cube_file) as hdul:
+        data = np.transpose(hdul[1].data, (3, 2, 0, 1))
+        assert np.all(data[0, :, cutout_lims[0, 0]:cutout_lims[0, 1], cutout_lims[1, 0]:cutout_lims[1, 1]] ==
+                      cutout.data)
+        if ffi_type == 'SPOC':
+            assert np.all(data[1, :, cutout_lims[0, 0]:cutout_lims[0, 1], cutout_lims[1, 0]:cutout_lims[1, 1]] ==
+                          cutout.uncertainty)
+
+
+@pytest.mark.parametrize("ffi_type", ["SPOC", "TICA"])
+def test_tess_cube_cutout_tpf_xy_pos(cube_file, num_images, ffi_type, cutout_size, xy_pos, cutout_lims):
+    # Make TPF cutout using pixel position
+    tpfs = TessCubeCutout(cube_file, cutout_size=cutout_size, xy_pos=xy_pos, product=ffi_type).tpf_cutouts
+    tpf = tpfs[0]
+
+    # Should return a list of HDUList objects
+    assert isinstance(tpfs, list)
+    assert isinstance(tpf, fits.HDUList)
+
+    # RA_OBJ and DEC_OBJ should be derived from the cube WCS
+    assert isinstance(tpf[0].header['RA_OBJ'], float)
+    assert isinstance(tpf[0].header['DEC_OBJ'], float)
+
+    # Other primary header values should still be set correctly
+    assert tpf[0].header['FFI_TYPE'] == ffi_type
+    assert tpf[0].header['CREATOR'] == 'astrocut'
+
+    # Check flux data shape
+    flux = tpf[1].data['FLUX']
+    assert flux.shape == (num_images, cutout_size, cutout_size)
+
+    # Compare flux data with input cube
+    with fits.open(cube_file) as hdul:
+        data = np.transpose(hdul[1].data, (3, 2, 0, 1))
+        assert np.all(data[0, :, cutout_lims[0, 0]:cutout_lims[0, 1], cutout_lims[1, 0]:cutout_lims[1, 1]] == flux)
+
+    tpf.close()
+
+
+@pytest.mark.parametrize("ffi_type", ["SPOC", "TICA"])
+def test_tess_cube_cutout_xy_pos_matches_coordinates(cube_file, ffi_type, cutout_size, coordinates, xy_pos):
+    # Cutout from xy_pos and cutout from sky coordinates at the same center should produce identical data
+    cutout_coord = TessCubeCutout(cube_file, coordinates, cutout_size, product=ffi_type).cutouts[0]
+    cutout_xy = TessCubeCutout(cube_file, cutout_size=cutout_size, xy_pos=xy_pos, product=ffi_type).cutouts[0]
+
+    assert np.all(cutout_coord.cutout_lims == cutout_xy.cutout_lims)
+    assert np.all(cutout_coord.data == cutout_xy.data)
+    assert np.all(cutout_coord.aperture == cutout_xy.aperture)
+
+
+@pytest.mark.parametrize("ffi_type", ["SPOC", "TICA"])
+def test_tess_cube_cutout_write_to_tpf_xy_pos(cube_file, tmpdir, cutout_size, xy_pos, ffi_type):
+    # Make cutout and write to TPF
+    cutout = TessCubeCutout(cube_file, cutout_size=cutout_size, xy_pos=xy_pos, product=ffi_type)
+    cutout_path = cutout.write_as_tpf(tmpdir)[0]
+
+    # File should exist and be a valid FITS file
+    assert Path(cutout_path).exists()
+    with fits.open(cutout_path) as hdul:
+        assert isinstance(hdul, fits.HDUList)
+
+    # Filename should contain pixel position instead of RA/Dec
+    assert f'x{xy_pos[0]:.2f}' in cutout_path
+    assert f'y{xy_pos[1]:.2f}' in cutout_path
+    assert f'{cutout_size}-x-{cutout_size}' in cutout_path
+
+
+@pytest.mark.parametrize("ffi_type", ["SPOC"])
+def test_tess_cube_cutout_xy_pos_invalid_inputs(cube_file, xy_pos, coordinates):
+    # Error if both coordinates and xy_pos are provided
+    with pytest.raises(InvalidInputError, match='Provide either coordinates or xy_pos'):
+        TessCubeCutout(cube_file, coordinates, cutout_size=5, xy_pos=xy_pos)
+
+    # Error if neither coordinates nor xy_pos are provided
+    with pytest.raises(InvalidInputError, match='One of coordinates or xy_pos must be provided'):
+        TessCubeCutout(cube_file, cutout_size=5)
+
+    # Error if angular cutout size is used with xy_pos
+    import astropy.units as u
+    with pytest.raises(InvalidInputError, match='Angular cutout sizes are not supported when using xy_pos'):
+        TessCubeCutout(cube_file, cutout_size=0.1 * u.deg, xy_pos=xy_pos)

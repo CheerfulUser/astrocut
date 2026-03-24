@@ -220,8 +220,8 @@ class TessCubeCutout(CubeCutout):
             'CREATOR': ('astrocut', 'software used to produce this file'),
             'PROCVER': (__version__, 'software version'),
             'FFI_TYPE': (self._product, 'the FFI type used to make the cutouts'),
-            'RA_OBJ': (self._coordinates.ra.deg if not self._use_xy_pos else np.nan, '[deg] right ascension'),
-            'DEC_OBJ': (self._coordinates.dec.deg if not self._use_xy_pos else np.nan, '[deg] declination'),
+            'RA_OBJ': (self._coordinates.ra.deg, '[deg] right ascension'),
+            'DEC_OBJ': (self._coordinates.dec.deg, '[deg] declination'),
             'TIMEREF': ('SOLARSYSTEM' if self._product == 'SPOC' else None, 
                         'barycentric correction applied to times'),
             'TASSIGN': ('SPACECRAFT' if self._product == 'SPOC' else None, 
@@ -437,6 +437,11 @@ class TessCubeCutout(CubeCutout):
 
         # Parse table info
         cube_wcs = self._parse_table_info(cube[2].data)
+
+        # If xy_pos was given, derive sky coordinates from the cube WCS now that we have it
+        if self._use_xy_pos:
+            ra, dec = cube_wcs.all_pix2world(self._xy_pos[0], self._xy_pos[1], 0)
+            self._coordinates = SkyCoord(ra, dec, unit='deg')
 
         # Get cutouts
         try:
