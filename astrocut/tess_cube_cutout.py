@@ -65,11 +65,13 @@ class TessCubeCutout(CubeCutout):
     @deprecated_renamed_argument('product', None, since='1.1.0', message='The `product` argument is deprecated and '
                                  'will be removed in a future version. Astrocut will only support cutouts from '
                                  'SPOC products.')
-    def __init__(self, input_files: List[Union[str, Path, S3Path]], coordinates: Union[SkyCoord, str], 
+    def __init__(self, input_files: List[Union[str, Path, S3Path]], coordinates: Union[SkyCoord, str] = None,
                  cutout_size: Union[int, np.ndarray, u.Quantity, List[int], Tuple[int]] = 25,
-                 fill_value: Union[int, float] = np.nan, limit_rounding_method: str = 'round', 
-                 threads: Union[int, Literal['auto']] = 1, product: str = 'SPOC', verbose: bool = False):
-        super().__init__(input_files, coordinates, cutout_size, fill_value, limit_rounding_method, threads, verbose)
+                 fill_value: Union[int, float] = np.nan, limit_rounding_method: str = 'round',
+                 threads: Union[int, Literal['auto']] = 1, product: str = 'SPOC', verbose: bool = False,
+                 xy_pos=None):
+        super().__init__(input_files, coordinates, cutout_size, fill_value, limit_rounding_method, threads, verbose,
+                         xy_pos=xy_pos)
 
         # Validate and set the product
         if product.upper() not in ['SPOC', 'TICA']:
@@ -218,8 +220,8 @@ class TessCubeCutout(CubeCutout):
             'CREATOR': ('astrocut', 'software used to produce this file'),
             'PROCVER': (__version__, 'software version'),
             'FFI_TYPE': (self._product, 'the FFI type used to make the cutouts'),
-            'RA_OBJ': (self._coordinates.ra.deg, '[deg] right ascension'),
-            'DEC_OBJ': (self._coordinates.dec.deg, '[deg] declination'),
+            'RA_OBJ': (self._coordinates.ra.deg if not self._use_xy_pos else np.nan, '[deg] right ascension'),
+            'DEC_OBJ': (self._coordinates.dec.deg if not self._use_xy_pos else np.nan, '[deg] declination'),
             'TIMEREF': ('SOLARSYSTEM' if self._product == 'SPOC' else None, 
                         'barycentric correction applied to times'),
             'TASSIGN': ('SPACECRAFT' if self._product == 'SPOC' else None, 
@@ -448,8 +450,11 @@ class TessCubeCutout(CubeCutout):
         self._build_tpf(cube, cutout)
         cube.close()
 
-        # Log coordinates
-        log.debug('Cutout center coordinate: %s, %s', self._coordinates.ra.deg, self._coordinates.dec.deg)
+        # Log center position
+        if self._use_xy_pos:
+            log.debug('Cutout center pixel (x, y): %s, %s', self._xy_pos[0], self._xy_pos[1])
+        else:
+            log.debug('Cutout center coordinate: %s, %s', self._coordinates.ra.deg, self._coordinates.dec.deg)
 
         # Get cutout WCS info
         max_dist, sigma = cutout.wcs_fit['WCS_MSEP'][0], cutout.wcs_fit['WCS_SIG'][0]

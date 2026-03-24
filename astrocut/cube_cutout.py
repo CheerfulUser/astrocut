@@ -55,11 +55,13 @@ class CubeCutout(Cutout, ABC):
     cutout()
         Generate the cutouts.
     """
-    def __init__(self, input_files: List[Union[str, Path, S3Path]], coordinates: Union[SkyCoord, str], 
+    def __init__(self, input_files: List[Union[str, Path, S3Path]], coordinates: Union[SkyCoord, str] = None,
                  cutout_size: Union[int, np.ndarray, u.Quantity, List[int], Tuple[int]] = 25,
-                 fill_value: Union[int, float] = np.nan, limit_rounding_method: str = 'round', 
-                 threads: Union[int, Literal['auto']] = 1, verbose: bool = False):
-        super().__init__(input_files, coordinates, cutout_size, fill_value, limit_rounding_method, verbose)
+                 fill_value: Union[int, float] = np.nan, limit_rounding_method: str = 'round',
+                 threads: Union[int, Literal['auto']] = 1, verbose: bool = False,
+                 xy_pos=None):
+        super().__init__(input_files, coordinates, cutout_size, fill_value, limit_rounding_method, verbose,
+                         xy_pos=xy_pos)
 
         # Assign the number of threads to use when making cutout
         self._threads = threads

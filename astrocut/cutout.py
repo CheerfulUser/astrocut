@@ -45,11 +45,17 @@ class Cutout(ABC):
         Generate the cutouts.
     """
 
-    def __init__(self, input_files: List[Union[str, Path, S3Path]], coordinates: Union[SkyCoord, str], 
+    def __init__(self, input_files: List[Union[str, Path, S3Path]], coordinates: Union[SkyCoord, str] = None,
                  cutout_size: Union[int, np.ndarray, u.Quantity, List[int], Tuple[int]] = 25,
-                 fill_value: Union[int, float] = np.nan, limit_rounding_method: str = 'round', 
-                 verbose: bool = False):
-        
+                 fill_value: Union[int, float] = np.nan, limit_rounding_method: str = 'round',
+                 verbose: bool = False, xy_pos: Union[Tuple[float, float], List[float]] = None):
+
+        # Validate that exactly one of coordinates or xy_pos is provided
+        if xy_pos is not None and coordinates is not None:
+            raise InvalidInputError('Provide either coordinates or xy_pos, not both.')
+        if xy_pos is None and coordinates is None:
+            raise InvalidInputError('One of coordinates or xy_pos must be provided.')
+
         # Log messages according to verbosity
         _handle_verbose(verbose)
 
@@ -58,11 +64,19 @@ class Cutout(ABC):
             input_files = [input_files]
         self._input_files = input_files
 
-        # Get coordinates as a SkyCoord object
-        if not isinstance(coordinates, SkyCoord):
-            coordinates = SkyCoord(coordinates, unit='deg')
-        self._coordinates = coordinates
-        log.debug('Coordinates: %s', self._coordinates)
+        if xy_pos is not None:
+            self._xy_pos = (float(xy_pos[0]), float(xy_pos[1]))
+            self._use_xy_pos = True
+            self._coordinates = None
+            log.debug('Pixel position (x, y): %s', self._xy_pos)
+        else:
+            # Get coordinates as a SkyCoord object
+            if not isinstance(coordinates, SkyCoord):
+                coordinates = SkyCoord(coordinates, unit='deg')
+            self._coordinates = coordinates
+            self._xy_pos = None
+            self._use_xy_pos = False
+            log.debug('Coordinates: %s', self._coordinates)
 
         # Turning the cutout size into an array of two values
         self._cutout_size = self.parse_size_input(cutout_size)
@@ -101,17 +115,21 @@ class Cutout(ABC):
         response : `numpy.array`
             The cutout pixel limits in an array of the form [[xmin,xmax],[ymin,ymax]]
         """
-        # Calculate pixel corresponding to coordinate
-        try:
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', message='All-NaN slice encountered')
-                center_pixel = self._coordinates.to_pixel(img_wcs)
-        except wcs.NoConvergence:  # If wcs can't converge, center coordinate is far from the footprint
-            raise InvalidQueryError('Cutout location is not in image footprint!')
+        if self._use_xy_pos:
+            # Use pixel position directly (numpy 0-indexed, (x, y) = (col, row))
+            center_pixel = self._xy_pos
+        else:
+            # Calculate pixel corresponding to coordinate
+            try:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore', message='All-NaN slice encountered')
+                    center_pixel = self._coordinates.to_pixel(img_wcs)
+            except wcs.NoConvergence:  # If wcs can't converge, center coordinate is far from the footprint
+                raise InvalidQueryError('Cutout location is not in image footprint!')
 
-        # We may get nans without a NoConvergence error
-        if np.isnan(center_pixel).any():
-            raise InvalidQueryError('Cutout location is not in image footprint!')
+            # We may get nans without a NoConvergence error
+            if np.isnan(center_pixel).any():
+                raise InvalidQueryError('Cutout location is not in image footprint!')
         
         lims = np.zeros((2, 2), dtype=int)
         for axis, size in enumerate(self._cutout_size):
@@ -121,6 +139,9 @@ class Cutout(ABC):
             elif size.unit == u.pixel:  # also pixels
                 dim = size.value / 2
             elif size.unit.physical_type == 'angle':  # angular size
+                if self._use_xy_pos:
+                    raise InvalidInputError('Angular cutout sizes are not supported when using xy_pos. '
+                                            'Provide cutout_size in pixels.')
                 pixel_scale = u.Quantity(wcs.utils.proj_plane_pixel_scales(img_wcs)[axis],
                                          img_wcs.wcs.cunit[axis])
                 dim = (size / pixel_scale).decompose() / 2
@@ -167,6 +188,13 @@ class Cutout(ABC):
         filename : str
             The generated cutout filename.
         """
+        if self._use_xy_pos:
+            return '{}_x{:.2f}_y{:.2f}_{}-x-{}_astrocut.fits'.format(
+                file_stem,
+                self._xy_pos[0],
+                self._xy_pos[1],
+                str(self._cutout_size[0]).replace(' ', ''),
+                str(self._cutout_size[1]).replace(' ', ''))
         return '{}_{:.7f}_{:.7f}_{}-x-{}_astrocut.fits'.format(
             file_stem,
             self._coordinates.ra.value,
@@ -232,11 +260,18 @@ class Cutout(ABC):
         """
         # Resolve zip path and ensure directory exists
         if filename is None:
-            filename = 'astrocut_{:.7f}_{:.7f}_{}-x-{}.zip'.format(
-                self._coordinates.ra.value,
-                self._coordinates.dec.value,
-                str(self._cutout_size[0]).replace(' ', ''),
-                str(self._cutout_size[1]).replace(' ', ''))
+            if self._use_xy_pos:
+                filename = 'astrocut_x{:.2f}_y{:.2f}_{}-x-{}.zip'.format(
+                    self._xy_pos[0],
+                    self._xy_pos[1],
+                    str(self._cutout_size[0]).replace(' ', ''),
+                    str(self._cutout_size[1]).replace(' ', ''))
+            else:
+                filename = 'astrocut_{:.7f}_{:.7f}_{}-x-{}.zip'.format(
+                    self._coordinates.ra.value,
+                    self._coordinates.dec.value,
+                    str(self._cutout_size[0]).replace(' ', ''),
+                    str(self._cutout_size[1]).replace(' ', ''))
         filename = Path(filename)
         if filename.suffix.lower() != '.zip':
             filename = filename.with_suffix('.zip')
