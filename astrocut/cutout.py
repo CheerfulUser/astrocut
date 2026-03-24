@@ -148,16 +148,22 @@ class Cutout(ABC):
             else:
                 raise InvalidInputError(f'Cutout size unit {size.unit.aliases[0]} is not supported.')
 
-            # Round the limits according to the requested method
-            rounding_funcs = {
-                'round': np.round,
-                'ceil': np.ceil,
-                'floor': np.floor
-            }
-            round_func = rounding_funcs[self._limit_rounding_method]
+            if self._use_xy_pos:
+                # Integer center — use exact arithmetic so output size always matches input size
+                pixel_size = int(dim * 2)
+                lims[axis, 0] = int(center_pixel[axis]) - pixel_size // 2
+                lims[axis, 1] = lims[axis, 0] + pixel_size
+            else:
+                # Round the limits according to the requested method
+                rounding_funcs = {
+                    'round': np.round,
+                    'ceil': np.ceil,
+                    'floor': np.floor
+                }
+                round_func = rounding_funcs[self._limit_rounding_method]
 
-            lims[axis, 0] = int(round_func(center_pixel[axis] - dim))
-            lims[axis, 1] = int(round_func(center_pixel[axis] + dim))
+                lims[axis, 0] = int(round_func(center_pixel[axis] - dim))
+                lims[axis, 1] = int(round_func(center_pixel[axis] + dim))
 
             # The case where the requested area is so small it rounds to zero
             if lims[axis, 0] == lims[axis, 1]:
