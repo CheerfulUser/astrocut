@@ -29,11 +29,12 @@ class CutoutFactory():
     @deprecated_renamed_argument('product', None, since='1.1.0', message='The `product` argument is deprecated and '
                                  'will be removed in a future version. Astrocut will only support cutouts from '
                                  'SPOC products.')
-    def cube_cut(self, cube_file: Union[str, Path, S3Path], coordinates: Union[SkyCoord, str],
-                 cutout_size: Union[int, np.ndarray, u.Quantity, List[int], Tuple[int]], 
-                 product: str = 'SPOC', target_pixel_file: Optional[str] = None, 
-                 output_path: Union[str, Path] = '.', memory_only: bool = False, 
-                 threads: Union[int, Literal["auto"]] = 1, verbose: bool = False):
+    def cube_cut(self, cube_file: Union[str, Path, S3Path], coordinates: Union[SkyCoord, str] = None,
+                 cutout_size: Union[int, np.ndarray, u.Quantity, List[int], Tuple[int]] = 25,
+                 product: str = 'SPOC', target_pixel_file: Optional[str] = None,
+                 output_path: Union[str, Path] = '.', memory_only: bool = False,
+                 threads: Union[int, Literal["auto"]] = 1, verbose: bool = False,
+                 xy_pos: Optional[Tuple[float, float]] = None):
         """
         Takes a cube file (as created by `~astrocut.CubeFactory`), and makes a cutout target pixel
         file of the given size around the given coordinates. The target pixel file is formatted like
@@ -92,8 +93,9 @@ class CutoutFactory():
                                      cutout_size=cutout_size,
                                      product=product,
                                      threads=threads,
-                                     verbose=verbose)
-        
+                                     verbose=verbose,
+                                     xy_pos=xy_pos)
+
         # Assign these attributes to be backwards compatible
         cutout_obj = cube_cutout.cutouts_by_file[cube_file]
         self.cube_wcs = cutout_obj.cube_wcs
@@ -110,11 +112,12 @@ class CutoutFactory():
 
 @deprecated_renamed_argument('product', None, since='1.1.0', message='The `product` argument is deprecated and will be '
                              'removed in a future version. Astrocut will only support cutouts from SPOC products.')
-def cube_cut(cube_file: Union[str, Path, S3Path], coordinates: Union[SkyCoord, str],
-             cutout_size: Union[int, np.ndarray, u.Quantity, List[int], Tuple[int]], 
-             product: str = 'SPOC', target_pixel_file: Optional[str] = None, 
-             output_path: Union[str, Path] = '.', memory_only: bool = False, 
-             threads: Union[int, Literal["auto"]] = 1, verbose: bool = False):
+def cube_cut(cube_file: Union[str, Path, S3Path], coordinates: Union[SkyCoord, str] = None,
+             cutout_size: Union[int, np.ndarray, u.Quantity, List[int], Tuple[int]] = 25,
+             product: str = 'SPOC', target_pixel_file: Optional[str] = None,
+             output_path: Union[str, Path] = '.', memory_only: bool = False,
+             threads: Union[int, Literal["auto"]] = 1, verbose: bool = False,
+             xy_pos: Optional[Tuple[float, float]] = None):
     """
     Takes a cube file (as created by `~astrocut.CubeFactory`), and makes a cutout target pixel
     file of the given size around the given coordinates. The target pixel file is formatted like
@@ -173,7 +176,8 @@ def cube_cut(cube_file: Union[str, Path, S3Path], coordinates: Union[SkyCoord, s
                                  cutout_size=cutout_size,
                                  product=product,
                                  threads=threads,
-                                 verbose=verbose)
+                                 verbose=verbose,
+                                 xy_pos=xy_pos)
             
     if memory_only:
         return cube_cutout.tpf_cutouts[0]
